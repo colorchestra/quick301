@@ -1,0 +1,131 @@
+#!/usr/bin/python3
+# encoding: utf-8
+
+'''
+a very simple URL shortener. use with great caution.
+
+
+to do:
+    make backup from original file
+    check for existing entries
+    parse indentation
+
+done:
+    link randomization
+    original file path via argparse
+    parse existing entries and output
+
+'''
+
+from optparse import OptionParser
+import os
+
+nginx_reload_command = "sudo systemctl reload nginx"
+random_link_length = 4
+fallback_subdir = "l"
+
+def deploy():
+    print("Please put the following lines in a suitable location in " + \
+            options.file)
+    print("# +++ linkshortener begin +++")
+    print("# +++ linkshortener end +++")
+
+def parse_existing():
+    # whoa this needs a lot of work
+
+    print("Existing entries:")
+    existing_output = ""
+    for line in range(begin + 1, end):
+        split = conf[line].split()
+        for index, entry in enumerate(split):
+            if entry == "location":
+                out_link = split[index + 1]
+
+            if entry == "301":
+                out_target = split[index + 1][:-1]
+
+        existing_output = existing_output + out_link.ljust(30) + out_target + "\n"
+    print(existing_output)
+
+
+def read_file():
+    with open(options.file, "r") as conffile:
+        conf = conffile.readlines()
+        for index, line in enumerate(conf):
+            if "+++ linkshortener begin +++" in line:
+                begin = index
+            if "+++ linkshortener end +++" in line:
+                end = index
+
+        # uglyyyy
+        try:
+            begin
+        except:
+            print("begin ain't there bro")
+
+        try:
+            end
+        except:
+            print("end ain't there bro")
+
+        return conf, begin, end
+
+
+parser = OptionParser()
+parser.add_option("-t", "--target", dest="target", help="Where your link should go")
+parser.add_option("-l", "--link", dest="link", help="Shortlink - will be \
+        randomized if not given")
+parser.add_option("-f", "--file", dest="file", help="Nginx configuration file \
+        to use")
+parser.add_option("-s", "--subdir", dest="subdir", help="The subdirectory \
+        before your link")
+parser.add_option("-d", "--deploy", action="store_true", dest="deploy", \
+        help="Deploy this crap in an untouched nginx config file")
+(options, args) = parser.parse_args()
+
+if options.file == None:
+    print("No file given! Exiting.")
+    exit()
+
+# just parse file and show existing shortlinks
+if options.link == None and options.target == None and not options.file == None:
+    conf, begin, end = read_file()
+    parse_existing()
+    exit()
+
+if options.deploy == True:
+    deploy()
+    exit()
+
+if options.target == None:
+    print("No target given! Exiting.")
+    exit()
+
+if options.link == None:
+    import random, string
+    options.link = ''.join(random.choice(string.ascii_lowercase + \
+        string.digits) for _ in range(random_link_length))
+
+if options.subdir == None:
+    options.subdir = fallback_subdir
+
+
+conf, begin, end = read_file()
+
+if not options.target.startswith("http"):
+    yn = input("Target doesn't seem to be a valid http link and will be \
+    treated as a relative link by Nginx. Add 'http://' at the start? y/n ") 
+    if yn == "y":
+        options.target = "http://" + options.target
+
+output = ("\tlocation /" + options.subdir + "/" + options.link + " { return 301 " + options.target +
+        "; } \n")
+print("Link to " + options.target + ": your domain + /" + options.subdir + "/" + options.link)
+
+conf.insert((begin + 1), output)
+
+f = open(options.file, "w")
+f.writelines(conf)
+f.close()
+
+os.system(nginx_reload_command)
